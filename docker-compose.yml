@@ -1,0 +1,40 @@
+version: "3.8"
+
+services:
+  app:
+    build: .
+    container_name: squad-ofertas
+    ports:
+      - "8765:8765"
+    environment:
+      - DEMO_MODE=${DEMO_MODE:-false}
+      - SERPAPI_KEY=${SERPAPI_KEY}
+      - MELI_CLIENT_ID=${MELI_CLIENT_ID}
+      - MELI_CLIENT_SECRET=${MELI_CLIENT_SECRET}
+      - MELI_REDIRECT_URI=http://localhost:8765/auth/meli/callback
+      - MELI_TOKEN_FILE=data/meli_token.json
+      - AMAZON_VIA_SERPAPI=${AMAZON_VIA_SERPAPI:-true}
+      - CACHE_TTL=${CACHE_TTL:-900}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o-mini}
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8765/api/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+# Para desenvolvimento com hot-reload:
+# services:
+#   app:
+#     build:
+#       context: .
+#       dockerfile: Dockerfile.dev
+#     volumes:
+#       - .:/app
+#       - /app/__pycache__
+#     command: python -m uvicorn app:app --host 0.0.0.0 --port 8765 --reload

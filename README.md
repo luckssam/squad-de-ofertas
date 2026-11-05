@@ -1,20 +1,25 @@
 # Squad de Ofertas
 
-Aplicação web local em Python onde você descreve o que quer comprar — produto, especificações e
-orçamento — e um **squad de agentes** busca, compara e recomenda a melhor oferta.
+[![CI](https://github.com/luckssmau/squad-de-ofertas/actions/workflows/ci.yml/badge.svg)](https://github.com/luckssmau/squad-de-ofertas/actions/workflows/ci.yml)
+[![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.115%2B-009688.svg)](https://fastapi.tiangolo.com/)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-> Sem chaves de API, o app roda em **modo demonstração** com ofertas simuladas. Basta abrir e usar.
+Aplicação web **local** em Python onde você descreve o que quer comprar — produto, especificações e orçamento — e um **squad de agentes** busca, compara e recomenda a melhor oferta.
 
-## Como rodar
+> **Sem chaves de API**, o app roda em **modo demonstração** com ofertas simuladas. Basta abrir e usar.
+
+---
+
+## Demonstração rápida
 
 ```bat
 iniciar.bat
 ```
 
-O script cria a virtualenv, instala as dependências, copia `.env.example` para `.env` na primeira
-execução e abre `http://127.0.0.1:8765`.
+O script cria a virtualenv, instala dependências, copia `.env.example` para `.env` (se não existir) e abre `http://127.0.0.1:8765`.
 
-Manual:
+**Manual:**
 
 ```bash
 py -m venv .venv
@@ -23,24 +28,33 @@ pip install -r requirements.txt
 python app.py
 ```
 
-Requisitos: Python 3.11+ (testado no 3.14) e conexão com a internet apenas para fontes reais/IA.
+**Com Docker:**
+
+```bash
+docker compose up --build
+# ou
+docker build -t squad-ofertas .
+docker run -p 8765:8765 --env-file .env squad-ofertas
+```
+
+---
 
 ## O squad
 
 | Agente | Papel | O que faz |
-| --- | --- | --- |
-| **Intenção** | interpreta | Extrai produto, especificações, orçamento, restrições e exclusões. Usa regras locais e, se houver LLM, refina o resultado. |
-| **Busca** | coleta | Consulta todas as fontes selecionadas em paralelo, com timeout por fonte. Uma fonte que falha não derruba a busca. |
-| **Curadoria** | filtra | Normaliza títulos, remove duplicatas por similaridade, aplica orçamento/exclusões, confere specs e calcula o score. |
-| **Análise** | decide | Compara preço, nota, avaliações, frete e specs; aponta prós/contras e escreve a recomendação. |
+|---|---|---|
+| **Intenção** | interpreta | Extrai produto, specs, orçamento, restrições e exclusões. Usa regras locais + LLM (opcional). |
+| **Busca** | coleta | Consulta fontes selecionadas em **paralelo**, com timeout por fonte. Falha isolada não derruba o squad. |
+| **Curadoria** | filtra | Normaliza, remove duplicatas (similaridade), aplica orçamento/exclusões, confere specs, calcula **score 0–100**. |
+| **Análise** | decide | Compara preço, nota, avaliações, frete, specs → aponta **prós/contras** e escreve a **recomendação**. |
 
-Fluxo: `texto livre → intenção → busca paralela → curadoria → análise → recomendação`.
-A tela mostra o squad trabalhando em tempo real via SSE (`/api/search/stream`).
+Fluxo: `texto livre → intenção → busca paralela → curadoria → análise → recomendação`  
+A tela mostra o squad trabalhando em tempo real via **SSE** (`/api/search/stream`).
 
 ### Score (0–100)
 
 | Peso | Critério |
-| --- | --- |
+|---:|---|
 | 34% | preço relativo ao menor preço do resultado |
 | 20% | nota do produto (quando disponível) |
 | 15% | specs atendidas |
@@ -48,27 +62,35 @@ A tela mostra o squad trabalhando em tempo real via SSE (`/api/search/stream`).
 | 10% | frete grátis |
 | 8% | volume de avaliações |
 
-O score é uma heurística transparente, não uma promessa de melhor compra. Preço e disponibilidade
-mudam — confirme sempre na loja.
+> O score é uma heurística transparente, não uma promessa de melhor compra. Preço e disponibilidade mudam — confirme sempre na loja.
+
+---
 
 ## Fontes de ofertas
 
 Configure no `.env` (veja `.env.example`):
 
 | Fonte | Chaves | Observações |
-| --- | --- | --- |
-| **Demonstração** | — | Sempre disponível. Gera ofertas plausíveis e determinísticas para qualquer busca. |
-| **Mercado Livre** | `MELI_ACCESS_TOKEN` | API oficial. Tokens expiram; renove no painel de desenvolvedor. |
-| **Google Shopping** | `SERPAPI_KEY` | Via [SerpAPI](https://serpapi.com/), com plano gratuito limitado. |
-| **Amazon** | `AMAZON_ACCESS_KEY`, `AMAZON_SECRET_KEY`, `AMAZON_PARTNER_TAG` | PA-API 5.0 com assinatura SigV4. Exige conta de afiliado aprovada. |
-| **Shopee** | `SHOPEE_APP_ID`, `SHOPEE_SECRET` | Open API de afiliados. **Experimental** — requer aprovação no programa. |
-| **AliExpress** | `ALIEXPRESS_APP_KEY`, `ALIEXPRESS_SECRET`, `ALIEXPRESS_TRACKING_ID` | Affiliate API. **Experimental** — assinatura e endpoint podem variar por conta. |
+|---|---|---|
+| **Demonstração** | — | Sempre disponível. Gera ofertas plausíveis e determinísticas. |
+| **Google Shopping** | `SERPAPI_KEY` | Via [SerpAPI](https://serpapi.com/) — plano grátis 250 buscas/mês. |
+| **Amazon Brasil** | `SERPAPI_KEY` + `AMAZON_VIA_SERPAPI=true` | Usa **engine=amazon&amazon_domain=amazon.com.br** do SerpAPI. **1 crédito extra por busca**. |
+| **Mercado Livre** | `MELI_CLIENT_ID` + `MELI_CLIENT_SECRET` | **OAuth 2.0** com refresh automático + callback local. Tokens salvos em `data/meli_token.json`. |
+| **Shopee** | `SHOPEE_APP_ID`, `SHOPEE_SECRET` | Open API de afiliados. **Experimental** — requer aprovação. |
+| **AliExpress** | `ALIEXPRESS_APP_KEY`, `ALIEXPRESS_SECRET`, `ALIEXPRESS_TRACKING_ID` | Affiliate API. **Experimental** — assinatura/endpoint podem variar. |
 
-Para usar **somente** fontes reais: `DEMO_MODE=false`.
-Se uma fonte falhar, a tela mostra o motivo (chave inválida, limite, tempo esgotado) sem interromper
-as demais.
+> **Modo só fontes reais:** `DEMO_MODE=false`  
+> Se uma fonte falhar, a tela mostra o motivo (chave inválida, limite, timeout) sem interromper as demais.
 
-### IA (opcional)
+### Cache inteligente (15 min)
+
+- Cada busca por conector é cacheada por **15 minutos** (configurável via `CACHE_TTL`).
+- Buscas repetidas **não consomem créditos** do SerpAPI.
+- No painel lateral, fontes vindas do cache mostram: `"Resultado em cache (15 min)"`.
+
+---
+
+## IA (opcional)
 
 ```env
 OPENAI_API_KEY=sk-...
@@ -76,71 +98,118 @@ OPENAI_MODEL=gpt-4o-mini
 # OPENAI_BASE_URL=https://api.openai.com/v1
 ```
 
-Qualquer endpoint compatível com OpenAI Chat Completions serve (OpenAI, OpenRouter, Ollama com
-camada compatível etc.). Sem IA, a interpretação e a análise usam regras locais — o app continua
-100% funcional.
+Qualquer endpoint compatível com **OpenAI Chat Completions** serve (OpenAI, OpenRouter, Ollama + camada compatível).  
+Sem IA, a interpretação e a análise usam regras locais — o app continua **100% funcional**.
+
+---
 
 ## Estrutura
 
 ```
-app.py                     FastAPI, SSE e arquivos estáticos
+app.py                      FastAPI, SSE, arquivos estáticos, rotas OAuth
 core/
-  config.py                leitura do .env e configuração pública
-  models.py                contratos (Intent, Offer, Analysis, SearchResult…)
-  orchestrator.py          encadeamento dos agentes e streaming
-  utils.py                 texto, preço, similaridade
+  config.py                 leitura do .env, configuração pública, meli_oauth
+  models.py                 contratos (Intent, Offer, Analysis, SearchResult…)
+  orchestrator.py           encadeamento dos agentes + cache + streaming
+  utils.py                  texto, preço, similaridade, hash
 agents/
-  intent.py                intenção (regras + LLM)
-  curator.py               dedupe, filtros, score
-  analyst.py               estatísticas e recomendação
+  intent.py                 intenção (regras + LLM)
+  curator.py                dedupe, filtros, score
+  analyst.py                estatísticas e recomendação
 connectors/
-  demo.py                  catálogo simulado
-  mercadolivre.py          API oficial
-  amazon.py                PA-API 5.0 (SigV4)
-  google_shopping.py       SerpAPI
-  shopee.py                afiliados (experimental)
-  aliexpress.py            afiliados (experimental)
-web/                       tela (HTML/CSS/JS, sem build)
+  base.py                   contrato base + build_terms
+  demo.py                   catálogo simulado
+  google_shopping.py        SerpAPI (Google Shopping)
+  amazon_serpapi.py         SerpAPI (Amazon Brasil)
+  amazon.py                 PA-API 5.0 — **legacy, descontinuado**
+  melo_oauth.py             gerenciador tokens ML (refresh automático)
+  mercadolivre.py           API oficial (usa OAuth se configurado)
+  shopee.py                 afiliados (experimental)
+  aliexpress.py             afiliados (experimental)
+web/                        tela (HTML/CSS/JS vanilla, sem build)
+.github/workflows/ci.yml    CI: testes, lint, verificação de segredos, build Docker
+Dockerfile                  multi-stage, non-root, healthcheck
+docker-compose.yml          sobe app + variáveis via .env
 ```
 
-### API
+---
 
-- `GET /api/config` — fontes disponíveis e status (sem expor segredos)
-- `GET /api/health`
-- `POST /api/search` — retorna o resultado completo em JSON
-- `POST /api/search/stream` — eventos SSE: `trace`, `intent`, `source`, `offers`, `analysis`, `done`, `error`
+## API
 
-Exemplo:
+| Endpoint | Descrição |
+|---|---|
+| `GET /api/config` | Fontes disponíveis + status (sem expor segredos) + `meli_oauth.auth_url` |
+| `GET /api/health` | `{status, llm, demo}` |
+| `GET /api/meli/status` | Status do token ML (válido, expirando, tem refresh) |
+| `POST /api/meli/disconnect` | Remove tokens salvos (logout) |
+| `GET /auth/meli/start` | Inicia OAuth → redireciona para ML |
+| `GET /auth/meli/callback` | Callback do ML → troca code por tokens |
+| `POST /api/search` | Resultado completo em JSON |
+| `POST /api/search/stream` | Eventos SSE: `trace`, `intent`, `source`, `offers`, `analysis`, `done`, `error` |
+
+**Exemplo de busca:**
 
 ```bash
 curl -X POST http://127.0.0.1:8765/api/search \
   -H "Content-Type: application/json" \
-  -d '{"query":"notebook i5 com 16GB até 4000","limit":20}'
+  -d '{"query":"notebook i5 com 16GB até 4000","sources":["google_shopping","amazon"],"limit":20}'
 ```
+
+---
+
+## Como configurar o Mercado Livre (OAuth)
+
+1. **Crie app** em https://developers.mercadolivre.com.br/devcenter/
+2. **Redirect URI:** `http://localhost:8765/auth/meli/callback` (exato)
+3. **Escopo:** Leitura
+4. Copie `Client ID` e `Client Secret` para `.env`:
+
+```env
+MELI_CLIENT_ID=seu_client_id
+MELI_CLIENT_SECRET=seu_client_secret
+MELI_REDIRECT_URI=http://localhost:8765/auth/meli/callback
+MELI_TOKEN_FILE=data/meli_token.json
+```
+
+5. Reinicie o app → no painel lateral clique **"Conectar Mercado Livre"** → autorize → pronto!
+
+> Tokens renovam **automaticamente** (5 min antes de expirar). Refresh token é **single-use** — o novo é salvo a cada renovação.
+
+---
 
 ## Adicionar uma fonte
 
 1. Crie `connectors/minhaloja.py` herdando de `Connector`.
 2. Implemente `configured`, `setup_hint` e `async def search(intent, limit)`.
-3. Normalize tudo para `Offer` (preço em BRL, URL https, `source` e `source_label`).
+3. Normalize para `Offer` (preço em BRL, URL https, `source`, `source_label`).
 4. Registre em `connectors/__init__.py` e exponha em `Settings.public_config()`.
-5. Erros esperados devem lançar `ConnectorError` com mensagem amigável.
+5. Erros esperados → lance `ConnectorError` com mensagem amigável.
+
+---
 
 ## Limitações e boas práticas
 
-- Use **APIs oficiais** e respeite termos de uso, limites e programas de afiliado. Scraping de
-  marketplaces é frágil e pode violar contratos.
-- A API do Mercado Livre pode exigir autenticação/renovação de token dependendo do app e do país.
-- Shopee e AliExpress estão marcadas como experimentais: a assinatura/estrutura pode mudar.
-- O modo demonstração usa URLs fictícias (`example.com`) e lojas inventadas.
-- O app é local, sem autenticação. Não exponha a porta na internet sem adicionar autenticação,
-  rate limit e HTTPS.
+- Use **APIs oficiais** e respeite termos de uso, limites e programas de afiliado.
+- A API do Mercado Livre (`/sites/MLB/search`) pode retornar **403** para alguns apps — teste antes.
+- Shopee e AliExpress são **experimentais**: assinatura/estrutura pode mudar.
+- Modo demonstração usa URLs fictícias (`example.com`) e lojas inventadas.
+- O app é **local**, sem autenticação. Não exponha na internet sem adicionar auth, rate limit e HTTPS.
+- **Nunca** commite `.env` — chaves vazam no histórico!
 
-## Próximos passos sugeridos
+---
 
-- [ ] Persistir buscas e criar alertas de queda de preço (watchlist + agendador)
+## Roadmap
+
+- [ ] Cache persistente (arquivo/Redis) — sobrevive a reinícios
+- [ ] Watchlist + alertas de queda de preço (agendador)
 - [ ] Histórico de preços por produto
-- [ ] Cache de resultados e rate limit por fonte
-- [ ] Testes automatizados dos agentes e conectores
 - [ ] Exportar comparação em CSV/PDF
-- [ ] Perfis de compra (ex.: “custo-benefício”, “só original”, “entrega rápida”)
+- [ ] Perfis de compra ("custo-benefício", "só original", "entrega rápida")
+- [ ] Integração Ollama local para IA 100% offline
+- [ ] Testes de integração dos conectores reais
+
+---
+
+## Licença
+
+MIT — use, modifique, distribua. Veja [LICENSE](LICENSE) se existir.
