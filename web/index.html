@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#0a0d0f" />
+  <title>Squad de Ofertas — encontre a melhor oferta</title>
+  <meta name="description" content="Descreva o produto e o squad de agentes busca, compara e recomenda a melhor oferta." />
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg" />
+  <link rel="stylesheet" href="/static/styles.css?v=3" />
+</head>
+<body>
+  <div class="page-glow" aria-hidden="true"></div>
+
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="Squad de Ofertas">
+      <span class="brand-mark" aria-hidden="true">
+        <svg viewBox="0 0 32 32" fill="none">
+          <circle cx="16" cy="16" r="10.5" stroke="currentColor" stroke-width="1.6" opacity=".55"/>
+          <circle cx="16" cy="16" r="5.5" stroke="currentColor" stroke-width="1.6"/>
+          <path d="M16 16 25 7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          <circle cx="16" cy="16" r="1.9" fill="currentColor"/>
+        </svg>
+      </span>
+      <span class="brand-text"><strong>SQUAD</strong><span>de ofertas</span></span>
+    </a>
+
+    <div class="topbar-meta">
+      <span class="pill pill-ai" id="llm-pill" title="Interpretação e análise com IA">
+        <span class="dot"></span><span id="llm-label">verificando IA…</span>
+      </span>
+      <span class="pill pill-mode" id="mode-pill">
+        <span class="dot"></span><span id="mode-label">modo demo</span>
+      </span>
+      <a class="topbar-link" href="#como-configurar">Configurar fontes</a>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero" aria-labelledby="hero-title">
+      <div class="hero-copy">
+        <p class="eyebrow"><span class="pulse-dot" aria-hidden="true"></span> 4 agentes · busca, curadoria e decisão</p>
+        <h1 id="hero-title">Descreva o produto.<br /><span class="grad">O squad caça a oferta.</span></h1>
+        <p class="sub">
+          Produto, especificações e orçamento em linguagem natural. Os agentes consultam as lojas,
+          eliminam duplicatas, comparam preço e reputação — e entregam uma recomendação.
+        </p>
+      </div>
+
+      <form class="search-panel" id="search-form" novalidate>
+        <div class="search-box" id="search-box">
+          <svg class="search-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <circle cx="10.5" cy="10.5" r="6.5" stroke="currentColor" stroke-width="1.8"/>
+            <path d="m15.6 15.6 4.4 4.4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+          </svg>
+          <label class="sr-only" for="query">O que você quer comprar?</label>
+          <input
+            id="query"
+            name="query"
+            type="text"
+            placeholder="Ex.: notebook i5 com 16GB e SSD 512GB até R$ 4.000"
+            autocomplete="off"
+            spellcheck="false"
+            maxlength="300"
+          />
+          <button class="btn-primary" id="submit-btn" type="submit">
+            <span class="btn-label">Buscar ofertas</span>
+            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <path d="M5 12h13M13 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <span class="btn-spinner" aria-hidden="true"></span>
+          </button>
+        </div>
+
+        <div class="examples" id="examples" aria-label="Exemplos de busca"></div>
+
+        <details class="filters" id="filters">
+          <summary>
+            <span class="filters-title">Ajustar filtros</span>
+            <span class="filters-hint" id="filters-hint">orçamento · fontes · ordenação</span>
+            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="m7 10 5 5 5-5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </summary>
+
+          <div class="filters-grid">
+            <fieldset class="filter-group">
+              <legend>Orçamento (R$)</legend>
+              <div class="budget-row">
+                <label for="budget-min">mínimo</label>
+                <input id="budget-min" inputmode="decimal" placeholder="0" autocomplete="off" />
+                <span class="budget-sep">—</span>
+                <label for="budget-max">máximo</label>
+                <input id="budget-max" inputmode="decimal" placeholder="sem limite" autocomplete="off" />
+              </div>
+            </fieldset>
+
+            <fieldset class="filter-group sources-group">
+              <legend>Fontes de busca</legend>
+              <div class="source-chips" id="source-chips"></div>
+              <p class="field-hint" id="sources-hint">Sem seleção = fontes automáticas disponíveis.</p>
+            </fieldset>
+
+            <div class="filter-actions">
+              <button type="button" class="btn-ghost" id="clear-filters">Limpar filtros</button>
+            </div>
+          </div>
+        </details>
+
+        <div class="intent-strip" id="intent-strip" hidden aria-live="polite"></div>
+      </form>
+    </section>
+
+    <section class="results-shell is-idle" id="results-shell" aria-live="polite">
+      <div class="results-main">
+        <div class="results-head" id="results-head" hidden>
+          <div>
+            <h2 id="results-title">Ofertas encontradas</h2>
+            <p id="results-sub" class="results-sub"></p>
+          </div>
+          <label class="sort-box">
+            <span>Ordenar por</span>
+            <select id="sort">
+              <option value="score">Recomendação</option>
+              <option value="price_asc">Menor preço</option>
+              <option value="price_desc">Maior preço</option>
+              <option value="rating">Melhor avaliado</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="stats-row" id="stats-row" hidden></div>
+
+        <div class="error-banner" id="error-banner" role="alert" hidden>
+          <span class="error-icon" aria-hidden="true">!</span>
+          <div><strong>Não foi possível concluir a busca</strong><p id="error-text"></p></div>
+          <button type="button" class="error-close" id="error-close" aria-label="Fechar aviso">×</button>
+        </div>
+
+        <div class="offers" id="offers"></div>
+
+        <div class="empty-state" id="empty-state">
+          <div class="radar" aria-hidden="true">
+            <span class="radar-circle c1"></span>
+            <span class="radar-circle c2"></span>
+            <span class="radar-circle c3"></span>
+            <span class="radar-sweep"></span>
+            <span class="radar-blip b1"></span>
+            <span class="radar-blip b2"></span>
+            <span class="radar-blip b3"></span>
+            <span class="radar-core"></span>
+          </div>
+          <h3>Sua próxima compra começa com uma frase.</h3>
+          <p>Diga o produto, o que ele precisa ter e quanto você quer gastar. O squad cuida do resto.</p>
+          <div class="empty-tags">
+            <span>produto</span><span>especificações</span><span>orçamento</span><span>recomendação</span>
+          </div>
+        </div>
+
+        <div class="skeletons" id="skeletons" hidden>
+          <div class="offer skeleton"><div class="sk-media"></div><div class="sk-body"><div class="sk-line w60"></div><div class="sk-line w90"></div><div class="sk-line w40"></div><div class="sk-line w70"></div></div></div>
+          <div class="offer skeleton"><div class="sk-media"></div><div class="sk-body"><div class="sk-line w50"></div><div class="sk-line w85"></div><div class="sk-line w35"></div><div class="sk-line w65"></div></div></div>
+          <div class="offer skeleton"><div class="sk-media"></div><div class="sk-body"><div class="sk-line w65"></div><div class="sk-line w80"></div><div class="sk-line w45"></div><div class="sk-line w60"></div></div></div>
+        </div>
+      </div>
+
+      <aside class="sidebar">
+        <section class="panel squad-panel">
+          <header class="panel-head">
+            <div>
+              <span class="panel-kicker">Ao vivo</span>
+              <h2>Squad em ação</h2>
+            </div>
+            <span class="live-badge" id="live-badge"><span class="dot"></span> pronta</span>
+          </header>
+
+          <ol class="agents" id="agents">
+            <li class="agent" data-agent="intent">
+              <span class="agent-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none"><path d="M12 3a6 6 0 0 0-6 6v3l-1.5 3h15L18 12V9a6 6 0 0 0-6-6Z" stroke="currentColor" stroke-width="1.6"/><path d="M9.5 18a2.5 2.5 0 0 0 5 0" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+              </span>
+              <div class="agent-body"><h3>Intenção</h3><p class="agent-msg">Aguardando seu pedido</p></div>
+              <span class="agent-ms"></span>
+              <span class="agent-state" aria-hidden="true"></span>
+            </li>
+            <li class="agent" data-agent="search">
+              <span class="agent-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none"><circle cx="10.5" cy="10.5" r="6.5" stroke="currentColor" stroke-width="1.6"/><path d="m15.5 15.5 4.5 4.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+              </span>
+              <div class="agent-body"><h3>Busca</h3><p class="agent-msg">Consultando as fontes</p></div>
+              <span class="agent-ms"></span>
+              <span class="agent-state" aria-hidden="true"></span>
+            </li>
+            <li class="agent" data-agent="curator">
+              <span class="agent-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none"><path d="M4 6h10M4 12h16M4 18h7" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><path d="m16 4 3 3-6 6-3 .5.5-3 5.5-5.5Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
+              </span>
+              <div class="agent-body"><h3>Curadoria</h3><p class="agent-msg">Deduplicando e pontuando</p></div>
+              <span class="agent-ms"></span>
+              <span class="agent-state" aria-hidden="true"></span>
+            </li>
+            <li class="agent" data-agent="analyst">
+              <span class="agent-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none"><path d="M5 19V9M12 19V5M19 19v-6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="m4 6 5-2 5 3 6-4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" opacity=".6"/></svg>
+              </span>
+              <div class="agent-body"><h3>Análise</h3><p class="agent-msg">Comparando e recomendando</p></div>
+              <span class="agent-ms"></span>
+              <span class="agent-state" aria-hidden="true"></span>
+            </li>
+          </ol>
+
+          <p class="agents-foot" id="agents-foot">O squad consulta as fontes em paralelo e devolve uma decisão, não uma lista infinita.</p>
+        </section>
+
+        <section class="panel analysis-panel" id="analysis-panel" hidden>
+          <header class="panel-head">
+            <div>
+              <span class="panel-kicker">Veredito</span>
+              <h2>Recomendação do squad</h2>
+            </div>
+            <span class="ai-tag" id="ai-tag" hidden>IA</span>
+          </header>
+          <h3 class="analysis-headline" id="analysis-headline"></h3>
+          <p class="analysis-summary" id="analysis-summary"></p>
+
+          <div class="analysis-lists">
+            <div class="analysis-list pros">
+              <h4>Pontos fortes</h4>
+              <ul id="analysis-pros"></ul>
+            </div>
+            <div class="analysis-list cons">
+              <h4>Atenção</h4>
+              <ul id="analysis-cons"></ul>
+            </div>
+          </div>
+
+          <div class="analysis-warning" id="analysis-warning" hidden></div>
+
+          <details class="analysis-tips" id="analysis-tips">
+            <summary>Dicas antes de comprar</summary>
+            <ul id="analysis-tips-list"></ul>
+          </details>
+
+          <button type="button" class="btn-pick" id="see-pick" hidden>
+            Ver a escolha do squad
+            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 5v14M6 13l6 6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+        </section>
+
+        <section class="panel sources-panel" id="sources-panel" hidden>
+          <header class="panel-head">
+            <div>
+              <span class="panel-kicker">Cobertura</span>
+              <h2>Fontes consultadas</h2>
+            </div>
+          </header>
+          <div class="source-list" id="source-list"></div>
+        </section>
+      </aside>
+    </section>
+
+    <section class="how" id="como-configurar" aria-labelledby="how-title">
+      <div class="how-copy">
+        <span class="panel-kicker">Como funciona</span>
+        <h2 id="how-title">Um time de agentes, uma decisão de compra.</h2>
+        <p>
+          Cada agente tem uma função. Você escreve uma frase; o squad interpreta, consulta as fontes
+          em paralelo, remove ruído e explica a escolha.
+        </p>
+      </div>
+      <div class="how-grid">
+        <article><span class="how-num">01</span><h3>Intenção</h3><p>Extrai produto, specs, orçamento e restrições do texto livre.</p></article>
+        <article><span class="how-num">02</span><h3>Busca</h3><p>Dispara consultas simultâneas nas lojas e APIs configuradas.</p></article>
+        <article><span class="how-num">03</span><h3>Curadoria</h3><p>Normaliza, deduplica, aplica filtros e calcula o score de cada oferta.</p></article>
+        <article><span class="how-num">04</span><h3>Análise</h3><p>Compara preço, reputação e specs — e recomenda a melhor compra.</p></article>
+      </div>
+
+      <div class="config-card">
+        <div>
+          <h3>Ativar fontes reais</h3>
+          <p>Copie <code>.env.example</code> para <code>.env</code> e preencha as chaves que você tiver. Sem chaves, o app segue funcionando no modo demonstração.</p>
+          <ul class="config-list">
+            <li><strong>Mercado Livre</strong> — <code>MELI_ACCESS_TOKEN</code></li>
+            <li><strong>Google Shopping</strong> — <code>SERPAPI_KEY</code></li>
+            <li><strong>Amazon</strong> — <code>AMAZON_ACCESS_KEY</code>, <code>AMAZON_SECRET_KEY</code>, <code>AMAZON_PARTNER_TAG</code></li>
+            <li><strong>Shopee / AliExpress</strong> — credenciais do programa de afiliados</li>
+            <li><strong>IA (opcional)</strong> — <code>OPENAI_API_KEY</code> e <code>OPENAI_MODEL</code></li>
+          </ul>
+        </div>
+        <pre class="config-snippet"><code># .env
+DEMO_MODE=false
+OPENAI_API_KEY=...
+SERPAPI_KEY=...
+MELI_ACCESS_TOKEN=...
+AMAZON_ACCESS_KEY=...
+AMAZON_SECRET_KEY=...
+AMAZON_PARTNER_TAG=...</code></pre>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <p>Squad de Ofertas · projeto local · dados de demonstração são fictícios.</p>
+    <p>Preços e disponibilidade mudam: confirme na loja antes de comprar.</p>
+  </footer>
+
+  <script src="/static/app.js?v=3"></script>
+</body>
+</html>
