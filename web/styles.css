@@ -670,6 +670,7 @@ h1 {
 .source-tag[data-source="amazon"] { color: #ffb877; border-color: rgba(255, 184, 119, 0.25); background: rgba(255, 184, 119, 0.07); }
 .source-tag[data-source="mercadolivre"] { color: #ffe066; border-color: rgba(255, 224, 102, 0.25); background: rgba(255, 224, 102, 0.07); }
 .source-tag[data-source="google_shopping"] { color: #8ec5ff; border-color: rgba(142, 197, 255, 0.25); background: rgba(142, 197, 255, 0.07); }
+.source-tag[data-source="shopping"] { color: #7ee0c0; border-color: rgba(126, 224, 192, 0.25); background: rgba(126, 224, 192, 0.07); }
 .source-tag[data-source="shopee"] { color: #ff9c88; border-color: rgba(255, 156, 136, 0.25); background: rgba(255, 156, 136, 0.07); }
 .source-tag[data-source="aliexpress"] { color: #ff8e8e; border-color: rgba(255, 142, 142, 0.25); background: rgba(255, 142, 142, 0.07); }
 .source-tag[data-source="demo"] { color: #a9b8b3; border-color: var(--line); background: rgba(255, 255, 255, 0.03); }
@@ -1056,6 +1057,7 @@ h1 {
 .source-row .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted-2); }
 .source-row .dot.ok { background: var(--lime); box-shadow: 0 0 8px rgba(198, 255, 74, 0.6); }
 .source-row .dot.error { background: var(--red); }
+.source-row .dot.restricted { background: var(--amber); }
 .source-row .dot.disabled { background: var(--muted-2); }
 .source-name { font-size: 12px; color: var(--text); }
 .source-detail {

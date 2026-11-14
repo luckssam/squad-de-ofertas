@@ -21,6 +21,7 @@ from core.models import (
     TraceEvent,
 )
 from core.utils import format_brl
+from core.affiliate import aplicar_links_afiliado
 
 
 class Squad:
@@ -87,7 +88,7 @@ class Squad:
             return connector, [], SourceStatus(
                 id=connector.id,
                 label=connector.label,
-                status="error",
+                status="restricted" if getattr(exc, "restricted", False) else "error",
                 message=str(exc),
                 ms=elapsed,
             )
@@ -180,6 +181,7 @@ class Squad:
         search_ms = int((time.perf_counter() - stage_start) * 1000)
         ok_count = sum(1 for status in statuses if status.status == "ok")
         error_count = sum(1 for status in statuses if status.status == "error")
+        restricted_count = sum(1 for status in statuses if status.status == "restricted")
         has_demo_offers = any(offer.is_demo for offer in offers)
         has_real_offers = any(not offer.is_demo for offer in offers)
         if has_demo_offers and has_real_offers:
@@ -190,8 +192,10 @@ class Squad:
             mode = "real"
 
         search_message = f"{len(offers)} ofertas de {ok_count} fonte(s)"
+        if restricted_count:
+            search_message += f" - {restricted_count} fonte(s) restrita(s)"
         if error_count:
-            search_message += f" · {error_count} fonte(s) com erro"
+            search_message += f" - {error_count} fonte(s) com erro"
         event_trace(
             "search",
             "Agente de Busca",
@@ -218,6 +222,12 @@ class Squad:
         )
         if meta["over_budget"]:
             curation_message += f" · {meta['over_budget']} acima do orçamento"
+        if meta.get("invalid_titles"):
+            curation_message += f" · {meta['invalid_titles']} título inválido"
+        if meta.get("attribute_filtered"):
+            curation_message += f" · {meta['attribute_filtered']} fora de cor/material"
+        if meta.get("brand_filtered"):
+            curation_message += f" · {meta['brand_filtered']} de outra marca"
         if meta["relaxed"]:
             curation_message += " · filtro de orçamento relaxado"
         event_trace("curator", "Agente de Curadoria", "ok", curation_message, curation_ms)
@@ -260,7 +270,7 @@ class Squad:
 
         result = SearchResult(
             intent=intent,
-            offers=curated,
+            offers=aplicar_links_afiliado(curated, self.settings),
             sources=statuses,
             analysis=analysis,
             trace=trace,

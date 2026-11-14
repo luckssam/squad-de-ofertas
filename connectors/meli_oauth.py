@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import time
 from pathlib import Path
 from typing import Any
@@ -9,6 +10,8 @@ from typing import Any
 import httpx
 
 from core.config import Settings
+
+logger = logging.getLogger("squad.meli")
 
 
 class MeliTokenManager:
@@ -19,7 +22,12 @@ class MeliTokenManager:
 
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
-        self.token_file = Path(settings.meli_token_file)
+        from core.config import BASE_DIR
+
+        token_path = Path(settings.meli_token_file)
+        if not token_path.is_absolute():
+            token_path = BASE_DIR / token_path
+        self.token_file = token_path
         self.token_file.parent.mkdir(parents=True, exist_ok=True)
 
     def _load_token_data(self) -> dict[str, Any] | None:
@@ -109,7 +117,7 @@ class MeliTokenManager:
         self._save_token_data(new_data)
         return new_data
 
-    def exchange_code(self, code: str) -> dict[str, Any] | None:
+    def exchange_code(self, code: str, code_verifier: str = "") -> dict[str, Any] | None:
         """Troca authorization code por tokens iniciais."""
         if not self.settings.meli_client_id or not self.settings.meli_client_secret:
             return None
@@ -121,19 +129,34 @@ class MeliTokenManager:
             "code": code,
             "redirect_uri": self.settings.meli_redirect_uri,
         }
+        if code_verifier:
+            payload["code_verifier"] = code_verifier
 
         try:
             with httpx.Client(timeout=self.settings.request_timeout) as client:
                 response = client.post(self.TOKEN_URL, data=payload)
-        except httpx.HTTPError:
+        except httpx.HTTPError as exc:
+            logger.error("MELI exchange_code: erro de rede: %s", exc)
             return None
 
         if response.status_code != 200:
+            logger.error(
+                "MELI exchange_code: HTTP %s | body: %s | payload(redacted): %s",
+                response.status_code,
+                response.text[:1000],
+                {
+                    "grant_type": payload.get("grant_type"),
+                    "client_id": payload.get("client_id"),
+                    "redirect_uri": payload.get("redirect_uri"),
+                    "code_len": len(str(payload.get("code", ""))),
+                },
+            )
             return None
 
         try:
             token_data = response.json()
         except ValueError:
+            logger.error("MELI exchange_code: resposta não-JSON: %s", response.text[:500])
             return None
 
         refresh_token = token_data.get("refresh_token")

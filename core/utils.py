@@ -107,6 +107,36 @@ def normalize_specs(values: list[str]) -> list[str]:
     ]
 
 
+JUNK_TITLE_PATTERNS = (
+    "icone",
+    "nova guia",
+    "abrir em",
+    "patrocinado",
+    "anuncio",
+    "sponsored",
+    "ver mais",
+    "comprar agora",
+    "sem titulo",
+    "carregando",
+)
+
+
+def is_junk_title(title: str) -> bool:
+    """Detecta títulos que não são nome de produto.
+
+    Acontece quando o scraper pega texto de acessibilidade ("Ícone de nova
+    guia"), placeholder ou um título truncado sem letras ("T - -, -").
+    """
+    text = " ".join(str(title or "").split())
+    if len(text) < 6:
+        return True
+    letters = sum(1 for char in text if char.isalpha())
+    if letters < 3 or letters / len(text) < 0.2:
+        return True
+    normalized = normalize_text(text)
+    return any(pattern in normalized for pattern in JUNK_TITLE_PATTERNS)
+
+
 def safe_url(url: str | None) -> str:
     if not url:
         return "#"

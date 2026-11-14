@@ -278,9 +278,9 @@
           <h3>Ativar fontes reais</h3>
           <p>Copie <code>.env.example</code> para <code>.env</code> e preencha as chaves que você tiver. Sem chaves, o app segue funcionando no modo demonstração.</p>
           <ul class="config-list">
-            <li><strong>Mercado Livre</strong> — <code>MELI_ACCESS_TOKEN</code></li>
-            <li><strong>Google Shopping</strong> — <code>SERPAPI_KEY</code></li>
-            <li><strong>Amazon</strong> — <code>AMAZON_ACCESS_KEY</code>, <code>AMAZON_SECRET_KEY</code>, <code>AMAZON_PARTNER_TAG</code></li>
+            <li><strong>Mercado Livre</strong> — grátis, via navegador (sem chaves)</li>
+            <li><strong>Amazon</strong> — grátis, via navegador (sem chaves)</li>
+            <li><strong>Shopping (Bing)</strong> — grátis, via navegador (sem chaves)</li>
             <li><strong>Shopee / AliExpress</strong> — credenciais do programa de afiliados</li>
             <li><strong>IA (opcional)</strong> — <code>OPENAI_API_KEY</code> e <code>OPENAI_MODEL</code></li>
           </ul>
@@ -288,11 +288,11 @@
         <pre class="config-snippet"><code># .env
 DEMO_MODE=false
 OPENAI_API_KEY=...
-SERPAPI_KEY=...
-MELI_ACCESS_TOKEN=...
-AMAZON_ACCESS_KEY=...
-AMAZON_SECRET_KEY=...
-AMAZON_PARTNER_TAG=...</code></pre>
+ML_AFFILIATE_TAG=...
+ML_AFFILIATE_TOOL=...
+AMAZON_ASSOCIATE_TAG=...
+# reserva do Shopping (opcional)
+SERPAPI_KEY=...</code></pre>
       </div>
     </section>
   </main>

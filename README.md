@@ -73,14 +73,42 @@ Configure no `.env` (veja `.env.example`):
 | Fonte | Chaves | Observações |
 |---|---|---|
 | **Demonstração** | — | Sempre disponível. Gera ofertas plausíveis e determinísticas. |
-| **Google Shopping** | `SERPAPI_KEY` | Via [SerpAPI](https://serpapi.com/) — plano grátis 250 buscas/mês. |
-| **Amazon Brasil** | `SERPAPI_KEY` + `AMAZON_VIA_SERPAPI=true` | Usa **engine=amazon&amazon_domain=amazon.com.br** do SerpAPI. **1 crédito extra por busca**. |
-| **Mercado Livre** | `MELI_CLIENT_ID` + `MELI_CLIENT_SECRET` | **OAuth 2.0** com refresh automático + callback local. Tokens salvos em `data/meli_token.json`. |
+| **Shopping (Bing)** | nada (padrão) | **Navegador real** — cards com preço/loja e link real do produto (ASIN, MLB…). `SHOPPING_WEB_ENABLED=false` volta para o Google Shopping/SerpAPI. |
+| **Amazon Brasil** | nada (padrão) | **Navegador real** (Edge/Chrome) — sem custo e sem cota. `AMAZON_WEB_ENABLED=false` volta para o SerpAPI. Links `amazon.com.br/dp/ASIN`. |
+| **Mercado Livre** | nada (padrão) | **Navegador real** — a API oficial de busca dá 403 para apps de terceiros. `MELI_USE_API=true` usa a API (após certificação). |
 | **Shopee** | `SHOPEE_APP_ID`, `SHOPEE_SECRET` | Open API de afiliados. **Experimental** — requer aprovação. |
 | **AliExpress** | `ALIEXPRESS_APP_KEY`, `ALIEXPRESS_SECRET`, `ALIEXPRESS_TRACKING_ID` | Affiliate API. **Experimental** — assinatura/endpoint podem variar. |
 
 > **Modo só fontes reais:** `DEMO_MODE=false`  
 > Se uma fonte falhar, a tela mostra o motivo (chave inválida, limite, timeout) sem interromper as demais.
+
+> **Um único navegador:** Mercado Livre, Amazon e Shopping usam o **mesmo Edge** (perfil em `data/browser_profile`), numa janela só, fora da tela. As abas são fechadas após cada busca para não acumular memória.
+
+### Links de afiliado
+
+O app reescreve o link de cada oferta quando há credencial do programa:
+
+| Loja | Variáveis no `.env` | Como fica o link |
+|---|---|---|
+| **Mercado Livre** | `ML_AFFILIATE_TAG` (etiqueta) + `ML_AFFILIATE_TOOL` (número) | `?matt_word=...&matt_tool=...` |
+| **Amazon** | `AMAZON_ASSOCIATE_TAG` (`seusite-20`) | `?tag=seusite-20` |
+
+- No Mercado Livre, pegue os dois valores em **Afiliados → Ferramentas → Gerador de links**: gere um link de qualquer produto e copie `matt_word` e `matt_tool` da URL.
+- **Os dois são obrigatórios**: sem o `matt_tool` o Mercado Livre não atribui a comissão, então o link fica o original.
+- Links de Shopping que apontam para Mercado Livre ou Amazon também recebem o afiliado da loja de destino.
+- Sem credencial, a oferta usa a URL original (nada quebra).
+
+### Cor, material, marca e tipo
+
+Quando o pedido cita cor, material ou marca ("PLA Silk Dourado", "tênis azul", "air fryer Philips"), a curadoria:
+
+- descarta ofertas que citam **outra cor** (ou misturam várias cores) ou **outro material** (ex.: PETG quando você pediu PLA);
+- descarta produto de tipo diferente que só coincidiu na cor (ex.: linha de crochê "ouro");
+- descarta **marca concorrente explícita** (ex.: Oster/Philco/Mondial numa busca por Philips);
+- mantém ofertas sem cor/marca no título, mas **rebaixadas** e marcadas com `Cor não confirmada` / `Marca não confirmada`;
+- rebaixa título que não cita o **tipo** pedido (ex.: sutiã numa busca por camiseta), com o selo `Tipo não confirmado`;
+- aceita sinônimos de categoria ("air fryer" = "fritadeira", "camiseta" = "camisa"/"t-shirt");
+- envia às lojas termos limpos (`pla silk dourado`), sem rótulos como `cor:` / `material:`.
 
 ### Cache inteligente (15 min)
 
@@ -112,15 +140,19 @@ core/
   models.py                 contratos (Intent, Offer, Analysis, SearchResult…)
   orchestrator.py           encadeamento dos agentes + cache + streaming
   utils.py                  texto, preço, similaridade, hash
+  attributes.py             cor/material do pedido × título da oferta
 agents/
-  intent.py                 intenção (regras + LLM)
-  curator.py                dedupe, filtros, score
+  intent.py                 intenção (regras + LLM, termos ancorados no pedido)
+  curator.py                dedupe, filtros (cor/material), score
   analyst.py                estatísticas e recomendação
 connectors/
   base.py                   contrato base + build_terms
   demo.py                   catálogo simulado
-  google_shopping.py        SerpAPI (Google Shopping)
-  amazon_serpapi.py         SerpAPI (Amazon Brasil)
+  google_shopping.py        SerpAPI (Google Shopping) — reserva
+  bing_shopping.py          Shopping (Bing) via navegador — padrão
+  amazon_web.py             navegador real (Amazon) — padrão
+  amazon_serpapi.py         SerpAPI (Amazon) — reserva
+  browser.py                navegador off-screen compartilhado
   amazon.py                 PA-API 5.0 — **legacy, descontinuado**
   melo_oauth.py             gerenciador tokens ML (refresh automático)
   mercadolivre.py           API oficial (usa OAuth se configurado)

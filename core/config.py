@@ -80,6 +80,43 @@ class Settings:
     meli_client_secret: str = ""
     meli_redirect_uri: str = "http://localhost:8765/auth/meli/callback"
     meli_token_file: str = "data/meli_token.json"
+    # Mercado Livre Afiliados (etiqueta + ferramenta)
+    ml_affiliate_tag: str = ""
+    ml_affiliate_tool: str = ""
+
+    # Mercado Livre: modo de busca
+    # A API oficial esta bloqueada para apps de terceiros (403); por padrao
+    # usamos o site publico via navegador real (sem custo e sem cota).
+    meli_use_api: bool = False
+    meli_web_enabled: bool = True
+    meli_browser_profile: str = "data/browser_profile"
+    meli_browser_channel: str = "msedge"
+
+    # Amazon: modo de busca
+    # A Creators API exige 10 vendas/30 dias; por padrao usamos o site publico
+    # via navegador real. Se falhar, cai para o SerpAPI (quando houver chave).
+    amazon_web_enabled: bool = True
+    amazon_browser_profile: str = "data/browser_profile"
+    amazon_browser_channel: str = "msedge"
+    browser_channel: str = "msedge"
+
+    # Shopping: Bing via navegador (gratis) ou Google via SerpAPI (reserva)
+    shopping_web_enabled: bool = True
+    shopping_browser_profile: str = "data/browser_profile"
+    shopping_browser_channel: str = "msedge"
+    shopping_resolve_concurrency: int = 6
+
+    # Amazon Associates
+    amazon_associate_tag: str = ""
+
+    # Shopee Afiliados
+    shopee_app_id: str = ""
+    shopee_secret: str = ""
+
+    # AliExpress Afiliados
+    aliexpress_app_key: str = ""
+    aliexpress_secret: str = ""
+    aliexpress_tracking_id: str = ""
 
 
     def __post_init__(self) -> None:
@@ -111,6 +148,30 @@ class Settings:
         self.meli_client_secret = _env("MELI_CLIENT_SECRET")
         self.meli_redirect_uri = _env("MELI_REDIRECT_URI") or self.meli_redirect_uri
         self.meli_token_file = _env("MELI_TOKEN_FILE") or self.meli_token_file
+        self.ml_affiliate_tag = _env("ML_AFFILIATE_TAG") or _env("ML_AFFILIATE_ID")
+        self.ml_affiliate_tool = _env("ML_AFFILIATE_TOOL")
+        self.meli_use_api = _env_bool("MELI_USE_API", False)
+        self.meli_web_enabled = _env_bool("MELI_WEB_ENABLED", True)
+        self.meli_browser_profile = _env("MELI_BROWSER_PROFILE") or self.meli_browser_profile
+        self.meli_browser_channel = _env("MELI_BROWSER_CHANNEL") or self.meli_browser_channel
+        self.amazon_web_enabled = _env_bool("AMAZON_WEB_ENABLED", True)
+        self.amazon_browser_profile = _env("AMAZON_BROWSER_PROFILE") or self.amazon_browser_profile
+        self.amazon_browser_channel = _env("AMAZON_BROWSER_CHANNEL") or self.amazon_browser_channel
+        self.browser_channel = _env("BROWSER_CHANNEL") or self.browser_channel
+        self.shopping_web_enabled = _env_bool("SHOPPING_WEB_ENABLED", True)
+        self.shopping_browser_profile = (
+            _env("SHOPPING_BROWSER_PROFILE") or self.shopping_browser_profile
+        )
+        self.shopping_browser_channel = (
+            _env("SHOPPING_BROWSER_CHANNEL") or self.shopping_browser_channel
+        )
+        self.shopping_resolve_concurrency = _env_int("SHOPPING_RESOLVE_CONCURRENCY", 6)
+        self.amazon_associate_tag = _env("AMAZON_ASSOCIATE_TAG")
+        self.shopee_app_id = _env("SHOPEE_APP_ID")
+        self.shopee_secret = _env("SHOPEE_SECRET")
+        self.aliexpress_app_key = _env("ALIEXPRESS_APP_KEY")
+        self.aliexpress_secret = _env("ALIEXPRESS_SECRET")
+        self.aliexpress_tracking_id = _env("ALIEXPRESS_TRACKING_ID")
 
     @property
     def llm_enabled(self) -> bool:
@@ -132,18 +193,41 @@ class Settings:
     def meli_oauth_configured(self) -> bool:
         return bool(self.meli_client_id and self.meli_client_secret)
 
-    def meli_auth_url(self, state: str = "squad_ofertas") -> str:
-        """Gera a URL de autorização do Mercado Livre."""
+    @property
+    def meli_configured(self) -> bool:
+        """True se há token estático no .env OU token OAuth salvo (com refresh_token)."""
+        if self.meli_access_token:
+            return True
+        try:
+            from pathlib import Path
+
+            token_path = Path(self.meli_token_file)
+            if not token_path.is_absolute():
+                token_path = BASE_DIR / token_path
+            if token_path.exists():
+                import json
+
+                data = json.loads(token_path.read_text(encoding="utf-8"))
+                return bool(data.get("refresh_token") or data.get("access_token"))
+        except (OSError, ValueError):
+            return False
+        return False
+
+    def meli_auth_url(self, state: str = "squad_ofertas", code_challenge: str = "") -> str:
+        """Gera a URL de autorização do Mercado Livre (com PKCE opcional)."""
         if not self.meli_oauth_configured:
             return ""
         from urllib.parse import quote
-        return (
+        url = (
             "https://auth.mercadolivre.com.br/authorization"
             f"?response_type=code"
             f"&client_id={self.meli_client_id}"
             f"&redirect_uri={quote(self.meli_redirect_uri, safe='')}"
             f"&state={state}"
         )
+        if code_challenge:
+            url += f"&code_challenge={code_challenge}&code_challenge_method=S256"
+        return url
 
     def public_config(self) -> dict:
         """Somente dados seguros para o navegador."""
@@ -167,23 +251,33 @@ class Settings:
                 {
                     "id": "mercadolivre",
                     "label": "Mercado Livre",
-                    "configured": bool(self.meli_access_token),
+                    "configured": self.meli_configured,
                     "experimental": False,
-                    "note": "API oficial. Requer MELI_ACCESS_TOKEN ou OAuth configurado.",
+                    "note": (
+                        "Busca pelo site do ML via navegador (sem custo). "
+                        "MELI_USE_API=true usa a API oficial apos certificacao."
+                    ),
                 },
                 {
                     "id": "amazon",
                     "label": "Amazon",
-                    "configured": self.amazon_via_serpapi and bool(self.serpapi_key),
+                    "configured": self.amazon_web_enabled
+                    or (self.amazon_via_serpapi and bool(self.serpapi_key)),
                     "experimental": False,
-                    "note": "Usa SerpAPI (Amazon Brasil). Requer SERPAPI_KEY e AMAZON_VIA_SERPAPI=true.",
+                    "note": (
+                        "Busca no site da Amazon via navegador (sem custo). "
+                        "AMAZON_WEB_ENABLED=false volta para o SerpAPI."
+                    ),
                 },
                 {
-                    "id": "google_shopping",
-                    "label": "Google Shopping",
-                    "configured": bool(self.serpapi_key),
+                    "id": "shopping",
+                    "label": "Shopping",
+                    "configured": self.shopping_web_enabled or bool(self.serpapi_key),
                     "experimental": False,
-                    "note": "Usa SerpAPI. Requer SERPAPI_KEY.",
+                    "note": (
+                        "Bing Shopping via navegador (sem custo). "
+                        "SHOPPING_WEB_ENABLED=false usa Google Shopping/SerpAPI."
+                    ),
                 },
                 {
                     "id": "shopee",

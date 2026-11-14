@@ -6,30 +6,10 @@ import re
 
 import httpx
 
+from core.attributes import CATEGORY_HINTS, clean_spec
 from core.config import Settings
 from core.models import Intent, SearchRequest
-from core.utils import normalize_specs, normalize_text, parse_price
-
-CATEGORY_HINTS: dict[str, list[str]] = {
-    "Fone de ouvido": ["fone", "headphone", "headset", "earbud", "airpod", "buds"],
-    "Notebook": ["notebook", "laptop", "ultrabook", "macbook"],
-    "Celular": ["celular", "smartphone", "iphone", "galaxy", "redmi", "moto g", "pixel"],
-    "Smartwatch": ["smartwatch", "relogio inteligente", "apple watch", "mi band"],
-    "Air fryer": ["air fryer", "airfryer", "fritadeira"],
-    "Cafeteira": ["cafeteira", "nespresso", "dolce gusto", "espresso"],
-    "Tênis": ["tenis", "sapato", "sneaker"],
-    "Monitor": ["monitor", "display"],
-    "Teclado": ["teclado", "keyboard"],
-    "Mouse": ["mouse"],
-    "Cadeira": ["cadeira", "poltrona"],
-    "Aspirador": ["aspirador", "robo aspirador"],
-    "TV": ["smart tv", "televisao", " tv "],
-    "Tablet": ["tablet", "ipad"],
-    "Caixa de som": ["caixa de som", "soundbar", "speaker"],
-    "Webcam": ["webcam"],
-    "Impressora": ["impressora", "multifuncional"],
-    "Bicicleta": ["bicicleta", "bike", "mtb"],
-}
+from core.utils import normalize_specs, normalize_text, parse_price, tokens
 
 FILLERS = [
     "quero", "queria", "gostaria", "procuro", "procurar", "procurando", "buscar",
@@ -284,10 +264,51 @@ async def parse_intent(request: SearchRequest, settings: Settings) -> Intent:
             return []
         return [str(item).strip() for item in value if str(item).strip()][:8]
 
-    product = str(parsed.get("product") or "").strip()
-    specs = list(dict.fromkeys(base.specs + _list(parsed.get("specs"))))[:6]
+    def _clean_list(values: list[str], limit: int) -> list[str]:
+        """Remove rótulos ('cor: dourado') e repetições das specs da IA."""
+        cleaned: list[str] = []
+        seen: set[str] = set()
+        for raw in values:
+            value = clean_spec(raw)
+            key = normalize_text(value)
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            cleaned.append(value)
+        return cleaned[:limit]
+
+    def _grounded(candidate: str, base: Intent) -> str:
+        """Aceita o produto da IA só se as palavras existirem no pedido.
+
+        Evita que a IA invente termos (ex.: "Fio PLA Silk Dourado" para o pedido
+        "PLA SILK DOURADO") e traga resultados de outro tipo de produto.
+        """
+        words = tokens(candidate)
+        if not words:
+            return ""
+        allowed = set(tokens(base.raw_query)) | set(tokens(base.product))
+        allowed |= set(tokens(" ".join(base.specs + base.must_have)))
+        return candidate if all(word in allowed for word in words) else ""
+
+    def _grounded_spec(value: str, base: Intent) -> bool:
+        """Specs da IA só entram se estiverem ancoradas no pedido do usuário."""
+        words = tokens(clean_spec(value))
+        if not words:
+            return False
+        allowed = set(tokens(base.raw_query)) | set(tokens(base.product))
+        allowed |= set(tokens(" ".join(base.specs)))
+        return all(word in allowed or word.isdigit() for word in words)
+
+    product = _grounded(str(parsed.get("product") or "").strip(), base)
+    llm_specs = [item for item in _list(parsed.get("specs")) if _grounded_spec(item, base)]
+    specs = _clean_list(
+        list(dict.fromkeys(base.specs + llm_specs)), 6
+    )
     keywords = list(dict.fromkeys(base.keywords + _list(parsed.get("keywords"))))[:14]
-    category = parsed.get("category")
+    # A categoria da IA só vale se for uma das conhecidas; senão usamos a da
+    # heurística, que é a que traz os sinônimos de tipo ("fritadeira").
+    llm_category = str(parsed.get("category") or "").strip()
+    category = llm_category if llm_category in CATEGORY_HINTS else base.category
     llm_min = parsed.get("budget_min")
     llm_max = parsed.get("budget_max")
 
@@ -303,11 +324,25 @@ async def parse_intent(request: SearchRequest, settings: Settings) -> Intent:
         product=product or base.product,
         keywords=keywords,
         specs=specs,
-        category=str(category).strip() if category else base.category,
+        category=category or base.category,
         budget_min=request.budget_min if request.budget_min is not None else (_num(llm_min) or base.budget_min),
         budget_max=request.budget_max if request.budget_max is not None else (_num(llm_max) or base.budget_max),
-        must_have=list(dict.fromkeys(base.must_have + _list(parsed.get("must_have"))))[:6],
-        exclude=list(dict.fromkeys(base.exclude + _list(parsed.get("exclude"))))[:6],
+        must_have=_clean_list(
+            list(
+                dict.fromkeys(
+                    base.must_have
+                    + [
+                        item
+                        for item in _list(parsed.get("must_have"))
+                        if _grounded_spec(item, base)
+                    ]
+                )
+            ),
+            6,
+        ),
+        exclude=_clean_list(
+            list(dict.fromkeys(base.exclude + _list(parsed.get("exclude")))), 6
+        ),
         source="llm",
         notes=str(parsed.get("notes")).strip() if parsed.get("notes") else None,
     )

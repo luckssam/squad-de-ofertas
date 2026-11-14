@@ -19,6 +19,7 @@
     amazon: "AM",
     mercadolivre: "ML",
     google_shopping: "GS",
+    shopping: "BG",
     shopee: "SH",
     aliexpress: "AE",
     demo: "DE",
@@ -638,10 +639,11 @@
       .map((source) => {
         const status = source.status || "disabled";
         let detail = "";
-        if (status === "ok") detail = source.message || `${source.count} ofertas em ${formatMs(source.ms) || "—"}`;
+        if (status === "ok") detail = source.message || `${source.count} ofertas em ${formatMs(source.ms) || "-"}`;
+        else if (status === "restricted") detail = source.message || "Fonte restrita pelo provedor";
         else if (status === "error") detail = source.message || "Falha na consulta";
         else detail = source.message || "Sem credenciais configuradas";
-        const count = status === "ok" ? `${source.count}` : status === "error" ? "erro" : "—";
+        const count = status === "ok" ? `${source.count}` : status === "error" ? "erro" : status === "restricted" ? "restrito" : "-";
         return `
           <div class="source-row" title="${esc(detail)}">
             <span class="dot ${esc(status)}"></span>
@@ -758,7 +760,7 @@
         else priceNoteBits.push("à vista");
         if (offer.shipping_free === true) priceNoteBits.push("frete grátis");
         const note = priceNoteBits.join(" · ");
-        const url = safeUrl(offer.url);
+        const url = safeUrl(offer.affiliate_url || offer.url);
         const cta =
           url === "#"
             ? '<span class="cta" aria-disabled="true">Sem link</span>'

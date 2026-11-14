@@ -14,6 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from core.config import BASE_DIR, settings
 from core.models import SearchRequest, SearchResult
 from core.orchestrator import Squad
+from connectors.browser import close_all_browsers
 from connectors.meli_oauth import create_token_manager
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -26,8 +27,33 @@ app = FastAPI(title="Squad de Ofertas", version="1.0.0")
 squad = Squad(settings)
 meli_token_mgr = create_token_manager(settings)
 
-# Armazena states temporarios para validar callback OAuth
-_oauth_states: set[str] = set()
+
+@app.on_event("shutdown")
+async def _shutdown_connectors() -> None:
+    """Fecha os conectores e o navegador compartilhado ao encerrar o app."""
+    for connector in squad.connectors:
+        closer = getattr(connector, "aclose", None)
+        if closer is None:
+            continue
+        try:
+            await closer()
+        except Exception:  # noqa: BLE001
+            pass
+    await close_all_browsers()
+
+# Armazena states temporarios para validar callback OAuth (state -> code_verifier PKCE)
+_oauth_states: dict[str, str] = {}
+
+
+def _generate_pkce() -> tuple[str, str]:
+    """Gera code_verifier e code_challenge (S256) para PKCE."""
+    import base64
+    import hashlib
+
+    verifier = secrets.token_urlsafe(64)
+    digest = hashlib.sha256(verifier.encode("ascii")).digest()
+    challenge = base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
+    return verifier, challenge
 
 WEB_DIR = BASE_DIR / "web"
 
@@ -90,8 +116,9 @@ async def meli_oauth_start() -> RedirectResponse:
             content={"detail": "OAuth do Mercado Livre nao configurado. Defina MELI_CLIENT_ID e MELI_CLIENT_SECRET."},
         )
     state = secrets.token_urlsafe(16)
-    _oauth_states.add(state)
-    auth_url = settings.meli_auth_url(state)
+    verifier, challenge = _generate_pkce()
+    _oauth_states[state] = verifier
+    auth_url = settings.meli_auth_url(state, code_challenge=challenge)
     return RedirectResponse(url=auth_url)
 
 
@@ -103,9 +130,9 @@ async def meli_oauth_callback(code: str = Query(...), state: str = Query(...)) -
             status_code=400,
             content={"detail": "State invalido ou expirado. Tente iniciar o fluxo novamente."},
         )
-    _oauth_states.discard(state)
+    code_verifier = _oauth_states.pop(state)
 
-    token_data = meli_token_mgr.exchange_code(code)
+    token_data = meli_token_mgr.exchange_code(code, code_verifier=code_verifier)
     if not token_data:
         return JSONResponse(
             status_code=400,

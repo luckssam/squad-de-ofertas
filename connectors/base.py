@@ -3,26 +3,44 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
+from core.attributes import clean_spec
 from core.models import Intent, Offer
+from core.utils import compact
 
 
 class ConnectorError(Exception):
-    """Erro amigável exibido na tela sem derrubar o squad."""
+    """Erro amigável exibido na tela sem derrubar o squad.
+
+    Use ``restricted=True`` quando a fonte está configurada mas o acesso foi
+    limitado por política do provedor (não é falha de credencial nem bug).
+    """
+
+    def __init__(self, message: str, restricted: bool = False) -> None:
+        super().__init__(message)
+        self.restricted = restricted
 
 
 def build_terms(intent: Intent) -> str:
-    """Monta o termo de busca a partir do produto + especificações."""
+    """Monta o termo de busca a partir do produto + especificações.
+
+    Especificações já contidas no produto (ex.: "dourado" em "PLA Silk Dourado")
+    não são repetidas, e rótulos como "cor:" / "material" são removidos para
+    não poluir a consulta enviada às lojas.
+    """
     parts: list[str] = []
-    product = (intent.product or intent.raw_query).strip()
+    product = clean_spec(intent.product or intent.raw_query)
     if product:
         parts.append(product)
-    lowered = product.lower()
-    for spec in intent.specs[:4]:
-        if spec and spec.lower() not in lowered:
-            parts.append(spec)
-    for item in intent.must_have[:2]:
-        if item and item.lower() not in " ".join(parts).lower():
-            parts.append(item)
+
+    covered = compact(" ".join(parts))
+    for raw in [*intent.specs, *intent.must_have]:
+        spec = clean_spec(raw)
+        key = compact(spec)
+        if not key or key in covered:
+            continue
+        parts.append(spec)
+        covered += key
+
     return " ".join(parts)[:180]
 
 

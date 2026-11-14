@@ -6,8 +6,28 @@ import re
 import statistics
 from difflib import SequenceMatcher
 
+from core.attributes import (
+    brand_mismatch,
+    brands_in,
+    colors_in,
+    mismatch_reason,
+    required_brands,
+    required_colors,
+    required_materials,
+    required_product_tokens,
+    required_type_terms,
+    type_in,
+)
 from core.models import Intent, Offer, SearchRequest
-from core.utils import clamp, compact, normalize_specs, normalize_text, token_set, tokens
+from core.utils import (
+    clamp,
+    compact,
+    is_junk_title,
+    normalize_specs,
+    normalize_text,
+    token_set,
+    tokens,
+)
 
 TRUST = {
     "amazon": 92.0,
@@ -103,7 +123,7 @@ def _sort_offers(offers: list[Offer], sort: str) -> list[Offer]:
 
 
 def _add_badge(offer: Offer, badge: str) -> None:
-    if badge not in offer.badges and len(offer.badges) < 3:
+    if badge not in offer.badges and len(offer.badges) < 4:
         offer.badges.append(badge)
 
 
@@ -112,10 +132,15 @@ def curate(
 ) -> tuple[list[Offer], dict]:
     total = len(offers)
     cleaned: list[Offer] = []
+    invalid_titles = 0
     for offer in offers:
         if not offer.title or offer.price <= 0:
+            invalid_titles += 1
             continue
         offer.title = re.sub(r"\s+", " ", offer.title).strip()
+        if is_junk_title(offer.title):
+            invalid_titles += 1
+            continue
         cleaned.append(offer)
 
     # 1. deduplicação por similaridade de título
@@ -130,7 +155,34 @@ def curate(
         keys.append(key)
     duplicates_removed = len(cleaned) - len(unique)
 
-    # 2. exclusões ("sem X")
+    # 2. cor / material pedidos (ex.: "PLA Silk Dourado" não traz PETG prata)
+    colors = required_colors(intent)
+    materials = required_materials(intent)
+    product_tokens = required_product_tokens(intent)
+    attribute_filtered = 0
+    if colors or materials:
+        kept_attributes: list[Offer] = []
+        for offer in unique:
+            if mismatch_reason(offer.title, colors, materials, product_tokens):
+                attribute_filtered += 1
+                continue
+            kept_attributes.append(offer)
+        unique = kept_attributes
+
+    # 3. marca pedida (ex.: "air fryer philips" não traz Oster/Philco)
+    brands = required_brands(intent)
+    type_terms = required_type_terms(intent)
+    brand_filtered = 0
+    if brands:
+        kept_brands: list[Offer] = []
+        for offer in unique:
+            if brand_mismatch(offer.title, brands):
+                brand_filtered += 1
+                continue
+            kept_brands.append(offer)
+        unique = kept_brands
+
+    # 4. exclusões ("sem X")
     excluded = 0
     if intent.exclude:
         kept: list[Offer] = []
@@ -142,7 +194,7 @@ def curate(
             kept.append(offer)
         unique = kept
 
-    # 3. orçamento (com fallback para "quase deu")
+    # 5. orçamento (com fallback para "quase deu")
     specs = normalize_specs(intent.specs + intent.must_have)
     eligible: list[Offer] = []
     over_budget: list[Offer] = []
@@ -164,19 +216,29 @@ def curate(
         for offer in eligible:
             offer.over_budget = True
 
-    # 4. pontuação
+    # 6. pontuação
     prices = [offer.price for offer in eligible]
     median = statistics.median(prices) if prices else 0.0
     cheapest = min(prices) if prices else 0.0
     for offer in eligible:
         offer.score = _score(offer, cheapest, len(specs))
+        if colors and not (colors_in(offer.title) & colors):
+            # Título não confirma a cor pedida: fica atrás dos confirmados.
+            offer.score = round(offer.score * 0.9, 1)
+        if brands and not (brands_in(offer.title) & brands):
+            # Marca pedida não aparece no título: pode ser o produto certo sem
+            # a marca escrita, então só rebaixa (mas com força).
+            offer.score = round(offer.score * 0.7, 1)
+        if type_terms and not type_in(offer.title, type_terms):
+            # Título não cita o tipo pedido (ex.: sutiã numa busca por camiseta).
+            offer.score = round(offer.score * 0.7, 1)
         if median:
             offer.price_vs_median = round((offer.price / median - 1) * 100, 1)
 
     ordered = _sort_offers(eligible, request.sort)
     result = ordered[: request.limit]
 
-    # 5. selos
+    # 7. selos
     if result:
         best_value = max(result, key=lambda offer: offer.score)
         cheapest_offer = min(result, key=lambda offer: offer.price)
@@ -197,11 +259,20 @@ def curate(
                 _add_badge(offer, "Poucas avaliações")
             if specs and not offer.missing_specs:
                 _add_badge(offer, "Specs completas")
+            if type_terms and not type_in(offer.title, type_terms):
+                _add_badge(offer, "Tipo não confirmado")
+            if brands and not (brands_in(offer.title) & brands):
+                _add_badge(offer, "Marca não confirmada")
+            if colors and not (colors_in(offer.title) & colors):
+                _add_badge(offer, "Cor não confirmada")
 
     meta = {
         "total_received": total,
+        "invalid_titles": invalid_titles,
         "duplicates_removed": duplicates_removed,
         "excluded": excluded,
+        "attribute_filtered": attribute_filtered,
+        "brand_filtered": brand_filtered,
         "below_budget": below_budget,
         "over_budget": len(over_budget),
         "relaxed": relaxed,

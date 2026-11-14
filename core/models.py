@@ -66,6 +66,7 @@ class Offer(BaseModel):
     over_budget: bool = False
     badges: list[str] = Field(default_factory=list)
     is_demo: bool = False
+    affiliate_url: str | None = None
 
     @property
     def display_price(self) -> str:
@@ -75,7 +76,7 @@ class Offer(BaseModel):
 class SourceStatus(BaseModel):
     id: str
     label: str
-    status: Literal["ok", "error", "disabled", "skipped"]
+    status: Literal["ok", "error", "disabled", "skipped", "restricted"]
     count: int = 0
     message: str | None = None
     ms: int = 0
